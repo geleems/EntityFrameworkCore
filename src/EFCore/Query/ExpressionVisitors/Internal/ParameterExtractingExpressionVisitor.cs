@@ -427,17 +427,28 @@ namespace Microsoft.EntityFrameworkCore.Query.ExpressionVisitors.Internal
         {
             public ParameterExpression ContextParameterExpression;
 
-            protected override Expression VisitConstant(ConstantExpression constantExpression)
+            public override Expression Visit(Expression expression)
             {
-                if (typeof(DbContext).GetTypeInfo()
-                    .IsAssignableFrom(constantExpression.Type.GetTypeInfo()))
+                if (expression != null
+                    && typeof(DbContext).GetTypeInfo().IsAssignableFrom(expression.Type.GetTypeInfo()))
                 {
-                    return ContextParameterExpression
-                           ?? (ContextParameterExpression
-                               = Expression.Parameter(constantExpression.Type, "context"));
+                    if (ContextParameterExpression == null)
+                    {
+                        ContextParameterExpression = Expression.Parameter(expression.Type, "context");
+                    }
+                    else
+                    {
+                        if (ContextParameterExpression.Type != expression.Type)
+                        {
+                            // TODO: Pending design meeting decision
+                            throw new InvalidOperationException();
+                        }
+                    }
+
+                    return ContextParameterExpression;
                 }
 
-                return constantExpression;
+                return base.Visit(expression);
             }
         }
 
@@ -475,7 +486,6 @@ namespace Microsoft.EntityFrameworkCore.Query.ExpressionVisitors.Internal
             switch (expression.NodeType)
             {
                 case ExpressionType.MemberAccess:
-                {
                     var memberExpression = (MemberExpression)expression;
                     var @object = Evaluate(memberExpression.Expression, out parameterName);
 
@@ -510,19 +520,14 @@ namespace Microsoft.EntityFrameworkCore.Query.ExpressionVisitors.Internal
                             // Try again when we compile the delegate
                         }
                     }
-
                     break;
-                }
+
                 case ExpressionType.Constant:
-                {
                     return ((ConstantExpression)expression).Value;
-                }
-                case ExpressionType.Call:
-                {
-                    parameterName = ((MethodCallExpression)expression).Method.Name;
 
+                case ExpressionType.Call:
+                    parameterName = ((MethodCallExpression)expression).Method.Name;
                     break;
-                }
             }
 
             try
